@@ -1,44 +1,130 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getUsers } from '../api';
+
+interface User {
+  id: number;
+  name: string;
+  role: string;
+}
 
 const Login = () => {
-  const [userId, setUserId] = useState('1'); // Varsayılan 1 (Ahmet Yılmaz)
+  const [users, setUsers] = useState<User[]>([]);
+  const [userId, setUserId] = useState('');
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    try {
+      const res = await getUsers();
+      setUsers(res.data);
+      if (res.data.length > 0) {
+        setUserId(res.data[0].id.toString());
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogin = () => {
-    // Gerçek uygulamada şifre kontrolü yapılır. Şimdilik ID ile geçiş yapıyoruz.
-    // ID'yi localStorage'a kaydediyoruz ki görevleri filtreleyebiliriz.
+    if (!userId) return;
     localStorage.setItem('userId', userId);
-    navigate('/dashboard');
+    const user = users.find(u => u.id === Number(userId));
+    if (user?.role === 'ADMIN') {
+      navigate('/admin');
+    } else {
+      navigate('/dashboard');
+    }
+  };
+
+  const getRoleLabel = (role: string) => {
+    const roleMap: { [key: string]: string } = {
+      'MALI_GMY': 'Mali GMY',
+      'MERKEZ_HAKEDIS': 'Merkez Hakediş',
+      'INSAN_KAYNAKLARI': 'İnsan Kaynakları',
+      'RUHSATLANDIRMA': 'Ruhsatlandırma',
+      'MALI_ISLER': 'Mali İşler',
+      'BILGI_SISTEMLERI': 'Bilgi Sistemleri',
+      'MISAFIR_HIZMETLERI': 'Misafir Hizmetleri',
+      'BIYOMEDIKAL': 'Biyomedikal',
+      'ISG_EGITMENI': 'İSG Eğitmeni',
+      'KALITE_EGITMENI': 'Kalite Eğitmeni',
+      'ADMIN': 'Admin',
+    };
+    return roleMap[role] || role;
   };
 
   return (
-    <div style={{ padding: '50px', textAlign: 'center' }}>
-      <h1>Doktor Workflow Sistemi</h1>
-      <div style={{ border: '1px solid #ccc', padding: '20px', maxWidth: '300px', margin: 'auto' }}>
-        <h3>Giriş Yap (Test)</h3>
-        <p>Hangi kullanıcı olarak girmek istersiniz?</p>
-        
-       <select 
-  value={userId} 
-  onChange={(e) => setUserId(e.target.value)}
-  style={{ padding: '10px', width: '100%', marginBottom: '10px' }}
->
-  <option value="1">Ahmet Yılmaz (Mali GMY)</option>
-  <option value="2">Ayşe Demir (Merkez Hakediş)</option>
-  <option value="3">Ali Veli (İnsan Kaynakları)</option>
-  <option value="4">Zeynep Yılmaz (Ruhsatlandırma)</option>
-  <option value="5">Hasan Hakkediş (Mali İşler)</option>
-  <option value="6">Ahmet Bilişim (Bilgi Sistemleri)</option>
-  <option value="7">Fatma Misafir (Misafir Hizmetleri)</option>
-  <option value="8">Tuncer Bio (Biyomedikal)</option>
-  <option value="9">Osman Güven (İSG Eğitmeni)</option>
-  <option value="10">Selin Kalite (Kalite Eğitmeni)</option>
-</select>
-        
-        <button onClick={handleLogin} style={{ padding: '10px 20px', background: 'blue', color: 'white', border: 'none', cursor: 'pointer' }}>
-          Giriş Yap
-        </button>
+    <div className="login-container">
+      <div className="login-card">
+        <div className="login-logo">
+          <div style={{ 
+            width: '64px', 
+            height: '64px', 
+            borderRadius: '16px', 
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 16px',
+            color: 'white',
+            fontSize: '28px'
+          }}>
+            🏥
+          </div>
+          <h1>Doktor Workflow</h1>
+          <p>Doktor işe alım süreç yönetim sistemi</p>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
+            Yükleniyor...
+          </div>
+        ) : users.length === 0 ? (
+          <div className="alert alert-error">
+            Sistemde kayıtlı kullanıcı bulunamadı. Lütfen veritabanını kontrol edin.
+          </div>
+        ) : (
+          <>
+            <div className="form-group">
+              <label className="form-label">Kullanıcı Seçin</label>
+              <select
+                className="form-select"
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+              >
+                {users.map(user => (
+                  <option key={user.id} value={user.id}>
+                    {user.name} ({getRoleLabel(user.role)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              className="btn btn-primary"
+              onClick={handleLogin}
+              style={{ width: '100%', padding: '14px', fontSize: '1rem' }}
+            >
+              Giriş Yap
+            </button>
+
+            <div style={{ 
+              marginTop: '24px', 
+              textAlign: 'center', 
+              fontSize: '0.875rem', 
+              color: '#64748b' 
+            }}>
+              Test modu - Şifre gerekli değildir
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
