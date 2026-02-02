@@ -27,8 +27,13 @@ const Admin = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const userId = localStorage.getItem('userId');
+    if (!userId) {
+      navigate('/');
+      return;
+    }
     loadData();
-  }, []);
+  }, [navigate]);
 
   const loadData = async () => {
     try {

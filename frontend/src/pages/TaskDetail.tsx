@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getTasks, completeTask, getUsers } from '../api';
 
@@ -79,7 +79,7 @@ const TaskDetail = () => {
     const stepName = task?.step_name;
     if (!stepName) return <div className="empty-state"><p>Yükleniyor...</p></div>;
 
-    const formFields: { [key: string]: JSX.Element } = {
+    const formFields: { [key: string]: React.ReactNode } = {
       'MALI_GMY': (
         <>
           <div className="form-group">
