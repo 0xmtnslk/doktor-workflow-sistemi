@@ -40,6 +40,20 @@ router.post('/contracts', createContract);
 // 5. SÖZLEŞMELERİ LİSTELEME
 router.get('/contracts', getContracts);
 
+// TÜM GÖREVLERİ LİSTELE
+router.get('/tasks', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT t.*, u.name as assigned_user_name, u.role, c.data->>'doctor_name' as doctor_name, c.current_status
+      FROM tasks t
+      JOIN users u ON t.assigned_to = u.id
+      JOIN contracts c ON t.contract_id = c.id
+      ORDER BY t.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: 'Hata' }); }
+});
+
 // 6. GÖREVİ TAMAMLAMA
 router.post('/tasks/:id/complete', completeTask);
 

@@ -95,12 +95,10 @@ export const completeTask = async (req: Request, res: Response) => {
       const contract_arrived = answers.sozlesme_ulasti_mi;
       const contract_approved = answers.sozlesme_onaylandi_mi;
 
-      // Sözleşme gelmediyse durdur
       if (contract_arrived === false) {
         return res.json({ message: 'Sözleşme ulaşmadı! Mali GMY ye bildirim atılıyor.', status: 'BACK_TO_START' });
       }
 
-      // Sözleşme onaylandıysa IK ve Ruhsat'a paralel görev at
       if (contract_approved === true) {
         // Ali Veli (ID: 3) - İnsan Kaynakları
         await pool.query(`INSERT INTO tasks (contract_id, assigned_to, step_name, description) VALUES ($1, $2, $3, 'Oracle girişi ve özlük işlemlerini yapın.')`, [task.contract_id, 3, 'INSAN_KAYNAKLARI']);
@@ -115,19 +113,15 @@ export const completeTask = async (req: Request, res: Response) => {
 
     // BLOK 3: PARALEL_SUREC -> MALI_ISLER
     if (contract.current_status === 'PARALEL_SUREC') {
-      // Diğer bitmemiş (PENDING) görev var mı bakalım?
-      // Kendimizi (şu an biten task'ı) saymıyoruz.
       const pendingResult = await pool.query(
         'SELECT * FROM tasks WHERE contract_id = $1 AND status = $2 AND id != $3',
         [task.contract_id, 'PENDING', taskId]
       );
 
-      // Eğer hala beklemede görev varsa, diğerini bekle.
       if (pendingResult.rows.length > 0) {
         return res.json({ message: 'Görev tamamlandı. Diğer paralel birim (IK/Ruhsat) bitmeyi bekliyor.' });
       }
 
-      // Eğer hiç beklemede görev yoksa (Yani son görevi biz bitirdik) -> Mali İşlere Git.
       // Hasan Hakkediş (ID: 5) - Mali İşler
       await pool.query(
         `INSERT INTO tasks (contract_id, assigned_to, step_name, description)
@@ -138,6 +132,111 @@ export const completeTask = async (req: Request, res: Response) => {
       await pool.query('UPDATE contracts SET current_status = $1 WHERE id = $2', ['MALI_ISLER', task.contract_id]);
 
       return res.json({ message: 'İK ve Ruhsat süreçleri tamamlandı. Mali İşlere gönderildi.', next_status: 'MALI_ISLER' });
+    }
+
+    // BLOK 4: MALI_ISLER -> BILGI_SISTEMLERI
+    if (contract.current_status === 'MALI_ISLER') {
+      // Ahmet Bilişim (ID: 6) Görev Ata
+      await pool.query(
+        `INSERT INTO tasks (contract_id, assigned_to, step_name, description)
+         VALUES ($1, $2, $3, 'Pusula ve e-imza kontrollerini yapın.')`,
+        [task.contract_id, 6, 'BILGI_SISTEMLERI']
+      );
+      
+      await pool.query('UPDATE contracts SET current_status = $1 WHERE id = $2', ['BILGI_SISTEMLERI', task.contract_id]);
+      return res.json({ message: 'Mali İşler tamamlandı. Bilgi Sistemlerine gönderildi.', next_status: 'BILGI_SISTEMLERI' });
+    }
+
+    // BLOK 5: BILGI_SISTEMLERI -> PARALEL_2 (MISAFIR & BIYOMEDIKAL)
+    if (contract.current_status === 'BILGI_SISTEMLERI') {
+      const pusula = answers.pusula_kuruldu_mu;
+      const comed = answers.comed_kuruldu_mu;
+      const esign = answers.esign_integrasyon;
+
+      if (pusula && comed && esign) {
+        // Fatma Misafir (ID: 7)
+        await pool.query(
+          `INSERT INTO tasks (contract_id, assigned_to, step_name, description)
+           VALUES ($1, $2, $3, 'Oda ve randevu hazırlık yapın.')`,
+          [task.contract_id, 7, 'MISAFIR_HIZMETLERI']
+        );
+
+        // Tuncer Bio (ID: 8)
+        await pool.query(
+          `INSERT INTO tasks (contract_id, assigned_to, step_name, description)
+           VALUES ($1, $2, $3, 'Medikal ekipman hazırlayın.')`,
+          [task.contract_id, 8, 'BIYOMEDIKAL']
+        );
+
+        await pool.query('UPDATE contracts SET current_status = $1 WHERE id = $2', ['PARALEL_2', task.contract_id]);
+        return res.json({ message: 'Bilgi sistemleri tamamlandı. Misafir ve Biyomedikale gönderildi.', next_status: 'PARALEL_2' });
+      } else {
+        return res.json({ message: 'Lütfen tüm soruları (Pusula, Comed, e-İmza) doğru cevaplayın.' });
+      }
+    }
+
+    // BLOK 6: PARALEL_2 -> ORYANTASYON
+    if (contract.current_status === 'PARALEL_2') {
+      // Diğer bitmemiş görev var mı?
+      const pendingResult = await pool.query(
+        'SELECT * FROM tasks WHERE contract_id = $1 AND status = $2 AND id != $3',
+        [task.contract_id, 'PENDING', taskId]
+      );
+
+      if (pendingResult.rows.length > 0) {
+        return res.json({ message: 'Görev tamamlandı. Diğer paralel birim (Misafir/Biyomedikal) bitmeyi bekliyor.' });
+      }
+
+      // Herkes bitti -> Oryantasyon Planlaması İçin İK'ye Ata (Ali Veli ID: 3)
+      await pool.query(
+        `INSERT INTO tasks (contract_id, assigned_to, step_name, description)
+         VALUES ($1, $2, $3, 'Oryantasyon eğitimi veren birimleri seçin.')`,
+        [task.contract_id, 3, 'ORYANTASYON']
+      );
+
+      await pool.query('UPDATE contracts SET current_status = $1 WHERE id = $2', ['ORYANTASYON', task.contract_id]);
+      return res.json({ message: 'Doktor işe başlayabilir. Oryantasyon planlaması İK\'ye iletildi.', next_status: 'ORYANTASYON' });
+    }
+
+    // BLOK 7: ORYANTASYON -> FAN-OUT (BİRİMLERE GÖREV ATA)
+    if (contract.current_status === 'ORYANTASYON') {
+      const location = answers.doktor_konumu; 
+      const selectedUnits = answers.secilen_birimler; 
+
+      if (!selectedUnits || selectedUnits.length === 0) {
+         return res.json({ message: 'Lütfen en az bir birim seçiniz.' });
+      }
+
+      // Sözleşme verisine konumu kaydet
+      const currentData = contract.data || {};
+      currentData['konum'] = location;
+      
+      await pool.query(
+        'UPDATE contracts SET data = $1 WHERE id = $2',
+        [JSON.stringify(currentData), task.contract_id]
+      );
+
+      // Seçilen Her Birim İçin Görev Aç
+      for (const unitId of selectedUnits) {
+        // Birimi ve sorumlu eğitmeni bul
+        const unitResult = await pool.query('SELECT * FROM units WHERE id = $1', [unitId]);
+        if (unitResult.rows.length > 0) {
+           const unit = unitResult.rows[0];
+           const trainerId = unit.training_contact_user_id;
+
+           if (trainerId) {
+             await pool.query(
+               `INSERT INTO tasks (contract_id, assigned_to, step_name, description)
+                VALUES ($1, $2, $3, 'Oryantasyon eğitimini verin.')`,
+               [task.contract_id, trainerId, unit.name + '_EGITIMI']
+             );
+           }
+        }
+      }
+
+      // Tüm akış bitti
+      await pool.query('UPDATE contracts SET current_status = $1 WHERE id = $2', ['TAMAMLANDI', task.contract_id]);
+      return res.json({ message: 'Oryantasyon planlandı. Eğitim görevleri birimlere atandı. Süreç Tamamlandı!', next_status: 'TAMAMLANDI' });
     }
 
     return res.json({ message: 'Tanımsız durum.' });
