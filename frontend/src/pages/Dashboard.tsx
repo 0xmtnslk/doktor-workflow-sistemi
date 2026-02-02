@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getTasks, createContract, getUsers, getContracts } from '../api';
-import ContractTimeline from '../components/ContractTimeline';
+import InlineTimeline from '../components/InlineTimeline';
 
 interface Task {
   id: number;
@@ -41,16 +41,28 @@ const Dashboard = () => {
   const [newContract, setNewContract] = useState({ doctor_name: '', doctor_role: '', start_date: '' });
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
+  const [showNewContractForm, setShowNewContractForm] = useState(false);
   const navigate = useNavigate();
 
   const myUserId = localStorage.getItem('userId');
   const currentUser = users.find(u => u.id === Number(myUserId));
+
+  const myContracts = contracts.filter(c => c.created_by === Number(myUserId));
+  const activeContracts = myContracts.filter(c => c.current_status !== 'TAMAMLANDI');
 
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (myContracts.length === 1 && selectedContractId === null) {
+      setSelectedContractId(myContracts[0].id);
+    } else if (myContracts.length > 1 && selectedContractId === null) {
+      setSelectedContractId(myContracts[0].id);
+    }
+  }, [myContracts, selectedContractId]);
 
   const loadData = async () => {
     try {
@@ -74,10 +86,14 @@ const Dashboard = () => {
     }
 
     try {
-      await createContract({ ...newContract, created_by: myUserId });
+      const res = await createContract({ ...newContract, created_by: myUserId });
       alert('Sözleşme başarıyla başlatıldı!');
       setNewContract({ doctor_name: '', doctor_role: '', start_date: '' });
+      setShowNewContractForm(false);
       loadData();
+      if (res.data && res.data.contractId) {
+        setSelectedContractId(res.data.contractId);
+      }
     } catch (err) {
       console.error(err);
       alert('Hata oluştu.');
@@ -87,9 +103,6 @@ const Dashboard = () => {
   const myTasks = tasks.filter(t => t.assigned_to === Number(myUserId) && t.status === 'PENDING');
   const completedTasks = tasks.filter(t => t.status === 'COMPLETED');
   const pendingTasks = tasks.filter(t => t.status === 'PENDING');
-  
-  const myContracts = contracts.filter(c => c.created_by === Number(myUserId));
-  const activeContracts = myContracts.filter(c => c.current_status !== 'TAMAMLANDI');
 
   const getRoleLabel = (role: string) => {
     const roleMap: { [key: string]: string } = {
@@ -126,10 +139,7 @@ const Dashboard = () => {
     return stepMap[step] || step;
   };
 
-  const getStatusColor = (status: string) => {
-    if (status === 'TAMAMLANDI') return '#10b981';
-    return '#f59e0b';
-  };
+  const isMaliGMY = currentUser?.role === 'MALI_GMY';
 
   return (
     <div className="app-container">
@@ -169,6 +179,118 @@ const Dashboard = () => {
           )}
         </div>
 
+        {isMaliGMY && (
+          <div className="card" style={{ marginBottom: '24px' }}>
+            {myContracts.length === 0 || showNewContractForm ? (
+              <>
+                <div className="card-header">
+                  <h2 className="card-title">
+                    {myContracts.length === 0 ? 'Yeni Sözleşme Süreci Başlat' : 'Yeni Süreç Ekle'}
+                  </h2>
+                  {myContracts.length > 0 && (
+                    <button 
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setShowNewContractForm(false)}
+                    >
+                      Geri
+                    </button>
+                  )}
+                </div>
+                <div className="new-contract-form" style={{ 
+                  display: 'flex', 
+                  gap: '12px', 
+                  flexWrap: 'wrap',
+                  padding: '0'
+                }}>
+                  <input
+                    type="text"
+                    placeholder="Doktor Adı (Dr. ...)"
+                    value={newContract.doctor_name}
+                    onChange={e => setNewContract({ ...newContract, doctor_name: e.target.value })}
+                    style={{ flex: '1', minWidth: '200px' }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Branş (Dahiliye, vs.)"
+                    value={newContract.doctor_role}
+                    onChange={e => setNewContract({ ...newContract, doctor_role: e.target.value })}
+                    style={{ flex: '1', minWidth: '150px' }}
+                  />
+                  <input
+                    type="date"
+                    value={newContract.start_date}
+                    onChange={e => setNewContract({ ...newContract, start_date: e.target.value })}
+                    style={{ minWidth: '150px' }}
+                  />
+                  <button 
+                    className="btn btn-success"
+                    onClick={handleCreateContract}
+                  >
+                    Süreci Başlat
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="card-header" style={{ marginBottom: '16px' }}>
+                  <h2 className="card-title">Süreç Takibi</h2>
+                  <button 
+                    className="btn btn-success btn-sm"
+                    onClick={() => setShowNewContractForm(true)}
+                  >
+                    + Yeni Süreç
+                  </button>
+                </div>
+
+                {myContracts.length > 1 && (
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '8px', 
+                    marginBottom: '20px',
+                    flexWrap: 'wrap',
+                    borderBottom: '2px solid #e2e8f0',
+                    paddingBottom: '12px'
+                  }}>
+                    {myContracts.map(contract => (
+                      <button
+                        key={contract.id}
+                        onClick={() => setSelectedContractId(contract.id)}
+                        style={{
+                          padding: '10px 16px',
+                          border: 'none',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          fontWeight: '500',
+                          transition: 'all 0.2s',
+                          background: selectedContractId === contract.id 
+                            ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+                            : '#f1f5f9',
+                          color: selectedContractId === contract.id ? 'white' : '#475569',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                      >
+                        <span style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          background: contract.current_status === 'TAMAMLANDI' ? '#10b981' : '#f59e0b'
+                        }} />
+                        {contract.data?.doctor_name || 'Doktor'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedContractId && (
+                  <InlineTimeline contractId={selectedContractId} />
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-card-icon primary">📋</div>
@@ -185,7 +307,7 @@ const Dashboard = () => {
             <div className="stat-card-value">{completedTasks.length}</div>
             <div className="stat-card-label">Tamamlanan</div>
           </div>
-          {activeContracts.length > 0 && (
+          {isMaliGMY && activeContracts.length > 0 && (
             <div className="stat-card">
               <div className="stat-card-icon" style={{ background: '#e0e7ff', color: '#4f46e5' }}>🔄</div>
               <div className="stat-card-value">{activeContracts.length}</div>
@@ -193,113 +315,6 @@ const Dashboard = () => {
             </div>
           )}
         </div>
-
-        <div className="new-contract-card">
-          <h3>Yeni Sözleşme Süreci Başlat</h3>
-          <div className="new-contract-form">
-            <input
-              type="text"
-              placeholder="Doktor Adı (Dr. ...)"
-              value={newContract.doctor_name}
-              onChange={e => setNewContract({ ...newContract, doctor_name: e.target.value })}
-            />
-            <input
-              type="text"
-              placeholder="Branş (Dahiliye, vs.)"
-              value={newContract.doctor_role}
-              onChange={e => setNewContract({ ...newContract, doctor_role: e.target.value })}
-            />
-            <input
-              type="date"
-              value={newContract.start_date}
-              onChange={e => setNewContract({ ...newContract, start_date: e.target.value })}
-            />
-            <button onClick={handleCreateContract}>
-              Süreci Başlat
-            </button>
-          </div>
-        </div>
-
-        {myContracts.length > 0 && (
-          <div className="card">
-            <div className="card-header">
-              <h2 className="card-title">Başlattığım Süreçler</h2>
-              <span className="badge badge-primary">{myContracts.length} süreç</span>
-            </div>
-
-            <div style={{ display: 'grid', gap: '12px' }}>
-              {myContracts.map(contract => (
-                <div 
-                  key={contract.id} 
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '16px 20px',
-                    background: '#f8fafc',
-                    borderRadius: '12px',
-                    borderLeft: `4px solid ${getStatusColor(contract.current_status)}`,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onClick={() => setSelectedContractId(contract.id)}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div style={{
-                      width: '48px',
-                      height: '48px',
-                      borderRadius: '12px',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: '600',
-                      fontSize: '1.25rem'
-                    }}>
-                      {contract.data?.doctor_name?.charAt(0) || 'D'}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: '600', fontSize: '1rem', marginBottom: '4px' }}>
-                        {contract.data?.doctor_name || 'Doktor'}
-                      </div>
-                      <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
-                        {contract.data?.doctor_role} • {new Date(contract.created_at).toLocaleDateString('tr-TR')}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ 
-                        fontSize: '0.75rem', 
-                        color: '#64748b',
-                        marginBottom: '4px'
-                      }}>
-                        Mevcut Adım
-                      </div>
-                      <span 
-                        className={`badge ${contract.current_status === 'TAMAMLANDI' ? 'badge-success' : 'badge-warning'}`}
-                      >
-                        {getStepLabel(contract.current_status)}
-                      </span>
-                    </div>
-                    <div style={{ 
-                      color: '#64748b', 
-                      fontSize: '1.25rem',
-                      padding: '8px'
-                    }}>
-                      →
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ marginTop: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.875rem' }}>
-              Süreç detaylarını görmek için bir sözleşmeye tıklayın
-            </div>
-          </div>
-        )}
 
         <div className="card">
           <div className="card-header">
@@ -322,20 +337,12 @@ const Dashboard = () => {
                   <span>Doktor: <strong>{task.doctor_name}</strong></span>
                   <span>Durum: {getStepLabel(task.current_status)}</span>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    className="btn btn-success"
-                    onClick={() => navigate(`/task/${task.id}`)}
-                  >
-                    Göreve Git
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setSelectedContractId(task.contract_id)}
-                  >
-                    Süreci Gör
-                  </button>
-                </div>
+                <button
+                  className="btn btn-success"
+                  onClick={() => navigate(`/task/${task.id}`)}
+                >
+                  Göreve Git
+                </button>
               </div>
             ))
           )}
@@ -384,13 +391,6 @@ const Dashboard = () => {
           )}
         </div>
       </main>
-
-      {selectedContractId && (
-        <ContractTimeline 
-          contractId={selectedContractId} 
-          onClose={() => setSelectedContractId(null)} 
-        />
-      )}
     </div>
   );
 };
