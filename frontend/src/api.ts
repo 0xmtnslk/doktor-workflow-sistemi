@@ -39,3 +39,7 @@ export const deleteUnit = (id: number) => api.delete(`/units/${id}`);
 
 // Workflow Rolleri
 export const getWorkflowRoles = () => api.get('/workflow-roles');
+
+// Timeline
+export const getContractTimeline = (contractId: number) => api.get(`/contracts/${contractId}/timeline`);
+export const getUserContracts = (userId: number) => api.get(`/contracts/by-user/${userId}`);

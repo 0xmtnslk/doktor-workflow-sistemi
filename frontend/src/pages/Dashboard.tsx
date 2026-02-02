@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getTasks, createContract, getUsers } from '../api';
+import { getTasks, createContract, getUsers, getContracts } from '../api';
+import ContractTimeline from '../components/ContractTimeline';
 
 interface Task {
   id: number;
@@ -11,6 +12,7 @@ interface Task {
   current_status: string;
   status: string;
   data: any;
+  contract_id: number;
 }
 
 interface User {
@@ -19,11 +21,26 @@ interface User {
   role: string;
 }
 
+interface Contract {
+  id: number;
+  current_status: string;
+  created_by: number;
+  created_by_name: string;
+  data: {
+    doctor_name: string;
+    doctor_role: string;
+    start_date: string;
+  };
+  created_at: string;
+}
+
 const Dashboard = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [newContract, setNewContract] = useState({ doctor_name: '', doctor_role: '', start_date: '' });
   const [showAllTasks, setShowAllTasks] = useState(false);
+  const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
   const navigate = useNavigate();
 
   const myUserId = localStorage.getItem('userId');
@@ -31,13 +48,20 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(loadData, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadData = async () => {
     try {
-      const [tasksRes, usersRes] = await Promise.all([getTasks(), getUsers()]);
+      const [tasksRes, usersRes, contractsRes] = await Promise.all([
+        getTasks(), 
+        getUsers(),
+        getContracts()
+      ]);
       setTasks(tasksRes.data);
       setUsers(usersRes.data);
+      setContracts(contractsRes.data);
     } catch (err) {
       console.error(err);
     }
@@ -63,6 +87,9 @@ const Dashboard = () => {
   const myTasks = tasks.filter(t => t.assigned_to === Number(myUserId) && t.status === 'PENDING');
   const completedTasks = tasks.filter(t => t.status === 'COMPLETED');
   const pendingTasks = tasks.filter(t => t.status === 'PENDING');
+  
+  const myContracts = contracts.filter(c => c.created_by === Number(myUserId));
+  const activeContracts = myContracts.filter(c => c.current_status !== 'TAMAMLANDI');
 
   const getRoleLabel = (role: string) => {
     const roleMap: { [key: string]: string } = {
@@ -87,13 +114,21 @@ const Dashboard = () => {
       'MERKEZ_HAKEDIS': 'Merkez Hakediş',
       'INSAN_KAYNAKLARI': 'İnsan Kaynakları',
       'RUHSATLANDIRMA': 'Ruhsatlandırma',
+      'PARALEL_SUREC': 'Paralel Süreç',
       'MALI_ISLER': 'Mali İşler',
       'BILGI_SISTEMLERI': 'Bilgi Sistemleri',
       'MISAFIR_HIZMETLERI': 'Misafir Hizmetleri',
+      'PARALEL_2': 'Paralel Süreç 2',
       'BIYOMEDIKAL': 'Biyomedikal',
       'ORYANTASYON': 'Oryantasyon Planlaması',
+      'TAMAMLANDI': 'Tamamlandı',
     };
     return stepMap[step] || step;
+  };
+
+  const getStatusColor = (status: string) => {
+    if (status === 'TAMAMLANDI') return '#10b981';
+    return '#f59e0b';
   };
 
   return (
@@ -150,6 +185,13 @@ const Dashboard = () => {
             <div className="stat-card-value">{completedTasks.length}</div>
             <div className="stat-card-label">Tamamlanan</div>
           </div>
+          {activeContracts.length > 0 && (
+            <div className="stat-card">
+              <div className="stat-card-icon" style={{ background: '#e0e7ff', color: '#4f46e5' }}>🔄</div>
+              <div className="stat-card-value">{activeContracts.length}</div>
+              <div className="stat-card-label">Aktif Süreçlerim</div>
+            </div>
+          )}
         </div>
 
         <div className="new-contract-card">
@@ -178,6 +220,87 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {myContracts.length > 0 && (
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">Başlattığım Süreçler</h2>
+              <span className="badge badge-primary">{myContracts.length} süreç</span>
+            </div>
+
+            <div style={{ display: 'grid', gap: '12px' }}>
+              {myContracts.map(contract => (
+                <div 
+                  key={contract.id} 
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px 20px',
+                    background: '#f8fafc',
+                    borderRadius: '12px',
+                    borderLeft: `4px solid ${getStatusColor(contract.current_status)}`,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onClick={() => setSelectedContractId(contract.id)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontWeight: '600',
+                      fontSize: '1.25rem'
+                    }}>
+                      {contract.data?.doctor_name?.charAt(0) || 'D'}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: '600', fontSize: '1rem', marginBottom: '4px' }}>
+                        {contract.data?.doctor_name || 'Doktor'}
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                        {contract.data?.doctor_role} • {new Date(contract.created_at).toLocaleDateString('tr-TR')}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ 
+                        fontSize: '0.75rem', 
+                        color: '#64748b',
+                        marginBottom: '4px'
+                      }}>
+                        Mevcut Adım
+                      </div>
+                      <span 
+                        className={`badge ${contract.current_status === 'TAMAMLANDI' ? 'badge-success' : 'badge-warning'}`}
+                      >
+                        {getStepLabel(contract.current_status)}
+                      </span>
+                    </div>
+                    <div style={{ 
+                      color: '#64748b', 
+                      fontSize: '1.25rem',
+                      padding: '8px'
+                    }}>
+                      →
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.875rem' }}>
+              Süreç detaylarını görmek için bir sözleşmeye tıklayın
+            </div>
+          </div>
+        )}
+
         <div className="card">
           <div className="card-header">
             <h2 className="card-title">Bekleyen Görevlerim</h2>
@@ -197,14 +320,22 @@ const Dashboard = () => {
                 </div>
                 <div className="task-card-meta">
                   <span>Doktor: <strong>{task.doctor_name}</strong></span>
-                  <span>Durum: {task.current_status}</span>
+                  <span>Durum: {getStepLabel(task.current_status)}</span>
                 </div>
-                <button
-                  className="btn btn-success"
-                  onClick={() => navigate(`/task/${task.id}`)}
-                >
-                  Göreve Git
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className="btn btn-success"
+                    onClick={() => navigate(`/task/${task.id}`)}
+                  >
+                    Göreve Git
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setSelectedContractId(task.contract_id)}
+                  >
+                    Süreci Gör
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -253,6 +384,13 @@ const Dashboard = () => {
           )}
         </div>
       </main>
+
+      {selectedContractId && (
+        <ContractTimeline 
+          contractId={selectedContractId} 
+          onClose={() => setSelectedContractId(null)} 
+        />
+      )}
     </div>
   );
 };

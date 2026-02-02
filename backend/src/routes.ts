@@ -160,6 +160,96 @@ router.post('/contracts', createContract);
 // 5. SÖZLEŞMELERİ LİSTELEME
 router.get('/contracts', getContracts);
 
+// Sözleşme Timeline (Akış takibi için)
+router.get('/contracts/:id/timeline', async (req, res) => {
+  try {
+    const contractId = req.params.id;
+    
+    const contractResult = await pool.query(`
+      SELECT c.*, u.name as created_by_name 
+      FROM contracts c 
+      LEFT JOIN users u ON c.created_by = u.id 
+      WHERE c.id = $1
+    `, [contractId]);
+    
+    if (contractResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Sözleşme bulunamadı.' });
+    }
+    
+    const contract = contractResult.rows[0];
+    
+    const tasksResult = await pool.query(`
+      SELECT t.*, u.name as assigned_user_name, u.role as assigned_user_role
+      FROM tasks t
+      JOIN users u ON t.assigned_to = u.id
+      WHERE t.contract_id = $1
+      ORDER BY t.created_at ASC
+    `, [contractId]);
+    
+    const tasks = tasksResult.rows;
+    
+    const workflowSteps = [
+      { id: 'MALI_GMY', name: 'Mali GMY Onayı', order: 1, parallel: false },
+      { id: 'MERKEZ_HAKEDIS', name: 'Merkez Hakediş', order: 2, parallel: false },
+      { id: 'INSAN_KAYNAKLARI', name: 'İnsan Kaynakları', order: 3, parallel: true, parallelGroup: 'A' },
+      { id: 'RUHSATLANDIRMA', name: 'Ruhsatlandırma', order: 3, parallel: true, parallelGroup: 'A' },
+      { id: 'MALI_ISLER', name: 'Mali İşler', order: 4, parallel: false },
+      { id: 'BILGI_SISTEMLERI', name: 'Bilgi Sistemleri', order: 5, parallel: false },
+      { id: 'MISAFIR_HIZMETLERI', name: 'Misafir Hizmetleri', order: 6, parallel: true, parallelGroup: 'B' },
+      { id: 'BIYOMEDIKAL', name: 'Biyomedikal', order: 6, parallel: true, parallelGroup: 'B' },
+      { id: 'ORYANTASYON', name: 'Oryantasyon Planlaması', order: 7, parallel: false },
+      { id: 'TAMAMLANDI', name: 'Süreç Tamamlandı', order: 8, parallel: false },
+    ];
+    
+    const timeline = workflowSteps.map(step => {
+      const relatedTasks = tasks.filter((t: any) => t.step_name === step.id);
+      const completedTask = relatedTasks.find((t: any) => t.status === 'COMPLETED');
+      const pendingTask = relatedTasks.find((t: any) => t.status === 'PENDING');
+      
+      return {
+        ...step,
+        status: completedTask ? 'COMPLETED' : (pendingTask ? 'PENDING' : 'WAITING'),
+        completedBy: completedTask ? completedTask.assigned_user_name : null,
+        completedAt: completedTask ? completedTask.completed_at : null,
+        assignedTo: pendingTask ? pendingTask.assigned_user_name : null,
+        tasks: relatedTasks
+      };
+    });
+    
+    res.json({
+      contract: {
+        id: contract.id,
+        doctor_name: contract.data?.doctor_name,
+        doctor_role: contract.data?.doctor_role,
+        current_status: contract.current_status,
+        created_by: contract.created_by_name,
+        created_at: contract.created_at
+      },
+      timeline,
+      tasks
+    });
+  } catch (error) {
+    console.error('Timeline hatası:', error);
+    res.status(500).json({ error: 'Timeline yüklenemedi.' });
+  }
+});
+
+// Kullanıcının oluşturduğu sözleşmeleri getir
+router.get('/contracts/by-user/:userId', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT c.*, u.name as created_by_name 
+      FROM contracts c 
+      LEFT JOIN users u ON c.created_by = u.id 
+      WHERE c.created_by = $1
+      ORDER BY c.created_at DESC
+    `, [req.params.userId]);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Sözleşmeler getirilemedi.' });
+  }
+});
+
 // TÜM GÖREVLERİ LİSTELE
 router.get('/tasks', async (req, res) => {
   try {
