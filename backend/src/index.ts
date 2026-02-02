@@ -9,7 +9,7 @@ const app = express();
 // Middleware'ler
 app.use(cors()); // <--- BU SATIRI EKLE
 app.use(express.json());
-const PORT = 3000;
+const PORT = 3001;
 
 // Middleware'ler
 app.use(express.json()); // JSON verilerini okur
